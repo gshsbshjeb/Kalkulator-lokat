@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kalkulator Lokat Bankowych</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+        color: #fff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 20px;
+    }
+
+    .calculator {
+        background: #1f1f1f;
+        padding: 25px;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        max-width: 800px;
+        width: 100%;
+        animation: fadeIn 0.6s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from {opacity: 0; transform: translateY(10px);}
+        to {opacity: 1; transform: translateY(0);}
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 1.5rem;
+        color: #00ffc6;
+    }
+
+    label {
+        display: block;
+        margin-top: 12px;
+        font-weight: bold;
+    }
+
+    input, select {
+        width: 100%;
+        padding: 10px;
+        margin-top: 5px;
+        border: none;
+        border-radius: 8px;
+        background: #2b2b2b;
+        color: #fff;
+        font-size: 1rem;
+        outline: none;
+        transition: background 0.3s;
+    }
+
+    input:focus, select:focus {
+        background: #3a3a3a;
+    }
+
+    button {
+        margin-top: 20px;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: #00ffc6;
+        color: #000;
+        font-size: 1rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.2s, background 0.3s;
+    }
+
+    button:hover {
+        transform: scale(1.03);
+        background: #00e6b4;
+    }
+
+    .result {
+        margin-top: 20px;
+        padding: 15px;
+        background: #2b2b2b;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.1rem;
+    }
+
+    canvas {
+        display: none; /* ukryte domyślnie */
+        margin-top: 20px;
+        background: #121212;
+        border-radius: 8px;
+        padding: 10px;
+        box-shadow: 0 0 10px rgba(0,255,198,0.4);
+    }
+</style>
+</head>
+<body>
+<div class="calculator">
+    <h1>Kalkulator Lokat</h1>
+    
+    <label for="amount">Kwota lokaty (PLN):</label>
+    <input type="number" id="amount" placeholder="np. 10000" />
+
+    <label for="rate">Oprocentowanie roczne (%):</label>
+    <input type="number" id="rate" step="0.01" placeholder="np. 5" />
+
+    <label for="period">Okres (w miesiącach):</label>
+    <input type="number" id="period" placeholder="np. 12" />
+
+    <label for="capitalization">Kapitalizacja:</label>
+    <select id="capitalization">
+        <option value="1">Roczna</option>
+        <option value="4">Kwartalna</option>
+        <option value="12">Miesięczna</option>
+    </select>
+
+    <button onclick="calculateDeposit()">Oblicz</button>
+
+    <div class="result" id="result">Wynik pojawi się tutaj</div>
+
+    <canvas id="depositChart" height="150"></canvas>
+    <canvas id="growthChart" height="150"></canvas>
+</div>
+
+<script>
+    let chartInstance = null;
+    let growthChartInstance = null;
+
+    function calculateDeposit() {
+        const amount = parseFloat(document.getElementById('amount').value);
+        const rate = parseFloat(document.getElementById('rate').value) / 100;
+        const periodMonths = parseInt(document.getElementById('period').value);
+        const capitalization = parseInt(document.getElementById('capitalization').value);
+
+        if (isNaN(amount) || isNaN(rate) || isNaN(periodMonths) || amount <= 0 || rate <= 0 || periodMonths <= 0) {
+            document.getElementById('result').innerText = "Podaj poprawne dane.";
+            return;
+        }
+
+        const years = periodMonths / 12;
+        const periodsPerYear = capitalization;
+        const interestPerPeriod = rate / periodsPerYear;
+
+        // Obliczenia brutto i netto dla całego okresu
+        const finalAmountBrutto = amount * Math.pow(1 + interestPerPeriod, years * periodsPerYear);
+        const profitBrutto = finalAmountBrutto - amount;
+        const tax = profitBrutto * 0.19;
+        const profitNetto = profitBrutto - tax;
+        const finalAmountNetto = amount + profitNetto;
+
+        document.getElementById('result').innerHTML =
+            `Końcowa kwota brutto: <strong>${finalAmountBrutto.toFixed(2)} PLN</strong><br>
+             Zysk brutto: <strong>${profitBrutto.toFixed(2)} PLN</strong><br>
+             Podatek Belki (19%): <strong>${tax.toFixed(2)} PLN</strong><br>
+             Końcowa kwota netto: <strong>${finalAmountNetto.toFixed(2)} PLN</strong><br>
+             Zysk netto: <strong>${profitNetto.toFixed(2)} PLN</strong>`;
+
+        // Pokazujemy wykresy po obliczeniu
+        document.getElementById('depositChart').style.display = 'block';
+        document.getElementById('growthChart').style.display = 'block';
+
+        // === WYKRES SŁUPKOWY ===
+        const ctxBar = document.getElementById('depositChart').getContext('2d');
+        if (chartInstance) chartInstance.destroy();
+        chartInstance = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: ['Kwota początkowa', 'Kwota końcowa brutto', 'Kwota końcowa netto'],
+                datasets: [{
+                    label: 'Kwota (PLN)',
+                    data: [amount, finalAmountBrutto, finalAmountNetto],
+                    backgroundColor: ['#00bfff', '#00ff99', '#ff9900']
+                }]
+            },
+            options: {
+                responsive: true,
+                animation: { duration: 1200, easing: 'easeOutQuart' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.formattedValue + ' PLN'
+                        },
+                        backgroundColor: '#333',
+                        titleColor: '#00ffc6',
+                        bodyColor: '#fff'
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#00ffc6' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#00ffc6' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+
+        // === WYKRES LINIOWY WZROSTU ===
+        let monthsLabels = [];
+        let bruttoData = [];
+        let nettoData = [];
+
+        for (let m = 1; m <= periodMonths; m++) {
+            let periodsPassed = m / (12 / periodsPerYear);
+            let currentBrutto = amount * Math.pow(1 + interestPerPeriod, periodsPassed);
+            bruttoData.push(currentBrutto);
+
+            let profitBruttoSoFar = currentBrutto - amount;
+            let taxSoFar = profitBruttoSoFar * 0.19;
+            let nettoSoFar = amount + (profitBruttoSoFar - taxSoFar);
+            nettoData.push(nettoSoFar);
+
+            monthsLabels.push(`M${m}`);
+        }
+
+        const ctxLine = document.getElementById('growthChart').getContext('2d');
+        if (growthChartInstance) growthChartInstance.destroy();
+        growthChartInstance = new Chart(ctxLine, {
+            type: 'line',
+            data: {
+                labels: monthsLabels,
+                datasets: [
+                    { label: 'Kwota brutto', data: bruttoData, borderColor: '#00ff99', backgroundColor: 'rgba(0,255,153,0.2)', fill: true, tension: 0.3, pointRadius: 3 },
+                    { label: 'Kwota netto', data: nettoData, borderColor: '#ff9900', backgroundColor: 'rgba(255,153,0,0.2)', fill: true, tension: 0.3, pointRadius: 3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                animation: { duration: 1400, easing: 'easeOutQuart' },
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#00ffc6' } },
+                    tooltip: {
+                        backgroundColor: '#333',
+                        titleColor: '#00ffc6',
+                        bodyColor: '#fff',
+                        callbacks: {
+                            label: ctx => ctx.formattedValue + ' PLN'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#00ffc6' },
+                        grid: { color: '#333' },
+                        title: { display: true, text: 'Miesiące', color: '#00ffc6' }
+                    },
+                    y: {
+                        ticks: { color: '#00ffc6' },
+                        grid: { color: '#333' },
+                        title: { display: true, text: 'Kwota (PLN)', color: '#00ffc6' },
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+</script>
+</body>
+</html>
